@@ -1,0 +1,8 @@
+# Never send secrets or build output into the image
+.env
+target/
+.git/
+.idea/
+.vscode/
+*.iml
+postman/

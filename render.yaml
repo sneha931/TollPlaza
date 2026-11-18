@@ -1,0 +1,16 @@
+# Render Blueprint: New > Blueprint > pick this repo. Render builds the Dockerfile.
+services:
+  - type: web
+    name: toll-plaza-service
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /v3/api-docs
+    envVars:
+      - key: ROUTING_PROVIDER
+        value: mappls
+      # Secret: Render asks for the value when the Blueprint is created. Never commit it.
+      - key: MAPPLS_API_KEY
+        sync: false
