@@ -50,7 +50,7 @@ At startup the log shows which provider is active: `Routing provider: Mappls` or
 
 The app starts on `http://localhost:8080`. On startup it loads `src/main/resources/data/toll_plaza_india.csv` into H2.
 
-- **Swagger UI:** <http://localhost:8080/swagger-ui.html>. The root URL `/` redirects there. Use **Try it out** on `POST /api/v1/toll-plazas`.
+- **Swagger UI:** <http://localhost:8080/swagger-ui.html>. The root URL `/` redirects there. On `POST /api/v1/toll-plazas`, click **Try it out** and pick a scenario from the **Examples** dropdown: the same 9 cases as the Postman collection.
 - **OpenAPI JSON:** <http://localhost:8080/v3/api-docs>
 - **H2 console (local only):** `/h2-console`, JDBC URL `jdbc:h2:mem:tolldb`, user `sa`. The Docker image turns it off, because the console can run any SQL.
 
