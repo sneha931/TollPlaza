@@ -10,7 +10,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "toll")
 public record TollProperties(Geocoding geocoding, Routing routing, Http http, Matching matching, Data data) {
 
-	public record Geocoding(String baseUrl, String userAgent) {
+	/**
+	 * @param pincodeDirectory bundled {@code pincode,latitude,longitude} CSV, consulted before Nominatim
+	 */
+	public record Geocoding(String pincodeDirectory, String baseUrl, String userAgent) {
 	}
 
 	/**

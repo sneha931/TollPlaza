@@ -30,10 +30,9 @@ public class TollPlazaController {
 			{"error": "Source and destination pincodes cannot be the same"}""";
 	private static final String SUCCESS = """
 			{
-			  "route": {"sourcePincode": "560064", "destinationPincode": "411045", "distanceInKm": 851.64},
+			  "route": {"sourcePincode": "560064", "destinationPincode": "411045", "distanceInKm": 848.77},
 			  "tollPlazas": [
-			    {"name": "Kadathanamale Toll Plaza", "latitude": 13.2179, "longitude": 77.5531, "distanceFromSource": 9.42},
-			    {"name": "Hulikunte Toll Plaza", "latitude": 13.4815, "longitude": 77.4256, "distanceFromSource": 41.97}
+			    {"name": "Banglaore-Nelamangala Toll Plaza", "latitude": 13.09062, "longitude": 77.400019, "distanceFromSource": 25.59}
 			  ]
 			}""";
 

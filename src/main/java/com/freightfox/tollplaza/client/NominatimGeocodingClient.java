@@ -3,10 +3,7 @@ package com.freightfox.tollplaza.client;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -15,21 +12,19 @@ import com.freightfox.tollplaza.exception.ExternalServiceException;
 import com.freightfox.tollplaza.geo.GeoPoint;
 
 /**
- * Geocodes pincodes using OpenStreetMap Nominatim (free, no API key).
- * <p>
- * Results are cached because Nominatim's usage policy allows at most one request per second.
+ * Geocodes pincodes using OpenStreetMap Nominatim (free, no API key). Used only as the fallback for
+ * pincodes missing from the bundled directory (see {@link PincodeDirectoryGeocodingClient}), whose
+ * cache also keeps us within Nominatim's one-request-per-second usage policy.
  */
-@Component
 public class NominatimGeocodingClient implements GeocodingClient {
 
 	private final RestClient restClient;
 
-	public NominatimGeocodingClient(@Qualifier("geocodingRestClient") RestClient restClient) {
+	public NominatimGeocodingClient(RestClient restClient) {
 		this.restClient = restClient;
 	}
 
 	@Override
-	@Cacheable(cacheNames = "pincodeLocations")
 	public Optional<GeoPoint> locate(String pincode) {
 		List<NominatimPlace> places;
 		try {

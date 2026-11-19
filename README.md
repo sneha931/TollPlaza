@@ -7,7 +7,7 @@ Spring Boot REST API that returns the toll plazas on the driving route between t
 - Java 17, Spring Boot 4.1
 - H2 in-memory database (toll plaza reference data)
 - Caffeine cache
-- **Geocoding:** OpenStreetMap Nominatim (pincode → lat/lng)
+- **Geocoding:** bundled India Post pincode directory (19,255 pincodes → lat/lng), with OpenStreetMap Nominatim as fallback
 - **Routing:** Mappls Route Advanced API (lat/lng → road polyline), with OSRM as a key-free fallback
 - **API docs:** springdoc-openapi (Swagger UI)
 - **Deployment:** Docker, Render
@@ -59,13 +59,14 @@ The app starts on `http://localhost:8080`. On startup it loads `src/main/resourc
 **1. Automated tests** (no network needed: the external APIs are mocked)
 
 ```bash
-./mvnw test                   # 65 tests; JaCoCo report at target/site/jacoco/index.html
+./mvnw test                   # 70 tests; JaCoCo report at target/site/jacoco/index.html
 ```
 
 | Layer | Test class | What it checks |
 |---|---|---|
 | Geometry | `GeoUtilsTest`, `RouteMatcherTest` | Distance maths, on-route matching, ordering, duplicate merging |
 | CSV | `CsvLineParserTest` | Quoted commas, bad rows |
+| Geocoding | `PincodeDirectoryGeocodingClientTest` | Directory lookup, fallback, bad lines, coverage of the bundled file |
 | HTTP clients | `MapplsRoutingClientTest`, `OsrmRoutingClientTest`, `NominatimGeocodingClientTest` | Request format, response parsing, error mapping, the API key never leaking (`MockRestServiceServer`) |
 | Service | `TollPlazaServiceTest` | Business rules and every edge case (Mockito) |
 | API | `TollPlazaControllerTest` | Status codes and the JSON error format (`@WebMvcTest`) |
@@ -111,9 +112,9 @@ curl -X POST http://localhost:8080/api/v1/toll-plazas \
 
 ```json
 {
-  "route": { "sourcePincode": "560064", "destinationPincode": "411045", "distanceInKm": 851.7 },
+  "route": { "sourcePincode": "560064", "destinationPincode": "411045", "distanceInKm": 848.77 },
   "tollPlazas": [
-    { "name": "Kadathanamale Toll Plaza", "latitude": 13.2179, "longitude": 77.5531, "distanceFromSource": 9.82 }
+    { "name": "Banglaore-Nelamangala Toll Plaza", "latitude": 13.09062, "longitude": 77.400019, "distanceFromSource": 25.59 }
   ]
 }
 ```
@@ -125,7 +126,7 @@ If no plazas lie on the route, the response is the same with `"tollPlazas": []`.
 | Case | Status | `error` |
 |---|---|---|
 | Pincode missing, not 6 digits, or starts with 0 | 400 | Invalid source or destination pincode |
-| Pincode not found by the geocoder | 400 | Invalid source or destination pincode |
+| Pincode not in the directory and not found by the fallback geocoder | 400 | Invalid source or destination pincode |
 | Source equals destination | 400 | Source and destination pincodes cannot be the same |
 | Body missing or not valid JSON | 400 | Request body is missing or is not valid JSON |
 | Wrong Content-Type | 415 | Content-Type must be application/json |
@@ -147,7 +148,7 @@ request ─► validate ─► cache? ─► geocode both pincodes ─► Mappls
 |---|---|
 | `controller` | REST endpoint and request validation |
 | `service` | Orchestration and response caching (`@Cacheable`) |
-| `client` | `GeocodingClient` / `RoutingClient` interfaces with Nominatim, Mappls and OSRM implementations, picked at startup by `HttpClientConfig`. This is the Strategy pattern: to swap in Google Maps, add a new implementation. |
+| `client` | `GeocodingClient` / `RoutingClient` interfaces. Geocoding is the bundled directory decorating a Nominatim fallback; routing is Mappls or OSRM, picked at startup by `HttpClientConfig`. This is the Strategy pattern: to swap in Google Maps, add a new implementation. |
 | `geo` | Pure geometry: haversine distance, point-to-segment projection, bounding box, `RouteMatcher` |
 | `loader` | CSV → DB at startup |
 | `repository` | Spring Data JPA |
@@ -157,12 +158,13 @@ request ─► validate ─► cache? ─► geocode both pincodes ─► Mappls
 
 - **Data loading.** The CSV has 2,385 rows but only 1,536 distinct plazas; the rest are exact duplicates. Rows are de-duplicated in memory, then written in a single batched `MERGE … KEY(name, latitude, longitude)` upsert. Restarting or reloading never creates duplicates. A unique constraint on the natural key enforces this. Plaza names alone aren't unique, so the name can't be the key.
 - **Two-stage matching.** A bounding-box query on an indexed `(latitude, longitude)` column cuts about 1,500 plazas down to a few hundred. Exact point-to-polyline distance then runs only on those candidates.
-- **Caching.** There are two Caffeine caches: `tollPlazaRoutes` stores full responses per (source → destination) pair, and `pincodeLocations` stores geocodes per pincode. Nominatim allows at most 1 request per second, so caching geocodes keeps us within its limit. Repeat requests return in about 5 ms instead of about 3 s.
+- **Caching.** There are two Caffeine caches: `tollPlazaRoutes` stores full responses per (source → destination) pair, and `pincodeLocations` stores geocodes per pincode, which also keeps the Nominatim fallback within its 1 request/second limit. Repeat requests return in about 20 ms instead of about 2 s.
+- **Geocoding without a network call.** `data/pincode_locations.csv` is built from the Department of Posts' All India Pincode Directory (via the MIT-licensed [pincodes-india](https://github.com/dropdevrahul/pincodes-india) mirror of data.gov.in). Each pincode uses the median location of its post offices, which ignores the directory's occasional wrongly placed office. Army Postal Service codes (9xxxxx) aren't real places and are left out. Public Nominatim blocks many cloud-host IPs (it fails from Render), so the directory makes the deployed app independent of it. For 560064 → 411045, the directory's start point gives exactly the same plazas as routing from Mappls' own pincode location.
 - **Configuration.** The matching threshold, provider URLs and timeouts are all in `application.properties` under `toll.*`.
 
 ### Known limitations
 
-- **Bengaluru 560064 → Pune 411045 with Mappls routing:** 851.64 km on NH48, the same route Mappls' website shows (851.8 km). We return 20 plazas, and every one is within 210 m of the route (all but one within 70 m). That's more than Mappls' 15 because the Hubli–Dharwad bypass has five plazas in the CSV: Gabbur, Tarihal, Kalghatgi, Goa and Narendra. Some of them are on entry/exit ramps right next to the main road. Coordinates alone can't tell a ramp plaza from a main-line plaza.
+- **Bengaluru 560064 → Pune 411045 with Mappls routing:** about 848 km on NH48 (Mappls' website shows 851.8 km; Mappls' distances vary by a few km between calls, likely with live traffic). We return 20 plazas. That's more than Mappls' 15 because the Hubli–Dharwad bypass has five plazas in the CSV: Gabbur, Tarihal, Kalghatgi, Goa and Narendra. Some of them are on entry/exit ramps right next to the main road. Coordinates alone can't tell a ramp plaza from a main-line plaza.
 - **Duplicate plazas in the CSV.** Some plazas appear twice under different names, for example "Khed-Shivapur" / "Khedshivapur", "Dhamnod" / "Delanpur" and "Nellore" / "Nellore (NH- 16)". The two listings can be up to about 1 km apart. Matches within `toll.matching.duplicate-radius-meters` (1,000 m) of each other, both along the route and on the ground, are merged into one. Plazas on the same highway are normally tens of km apart, so this doesn't merge real, separate plazas.
 - **OSRM fallback chooses different routes.** Without a Mappls key, OSRM routes 560064 → 411045 via Bijapur and then state roads, and returns 11 plazas.
-- Nominatim doesn't know every Indian pincode. A real but unmapped pincode is reported as invalid.
+- A pincode missing from the directory falls back to Nominatim. If that also fails (or is unreachable, as on Render), the pincode is reported as invalid.

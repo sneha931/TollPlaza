@@ -4,17 +4,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import com.freightfox.tollplaza.client.GeocodingClient;
 import com.freightfox.tollplaza.client.MapplsRoutingClient;
+import com.freightfox.tollplaza.client.NominatimGeocodingClient;
 import com.freightfox.tollplaza.client.OsrmRoutingClient;
+import com.freightfox.tollplaza.client.PincodeDirectoryGeocodingClient;
 import com.freightfox.tollplaza.client.RoutingClient;
 
 /**
- * Wires the external provider clients. The routing provider is chosen here (factory) from
- * {@code toll.routing.provider}, so the rest of the app only ever sees {@link RoutingClient}.
+ * Wires the provider clients, so the rest of the app only ever sees {@link GeocodingClient} and
+ * {@link RoutingClient}. Geocoding = bundled pincode directory with Nominatim as fallback (decorator);
+ * the routing provider is chosen from {@code toll.routing.provider} (factory).
  */
 @Configuration
 public class HttpClientConfig {
@@ -22,12 +27,16 @@ public class HttpClientConfig {
 	private static final Logger log = LoggerFactory.getLogger(HttpClientConfig.class);
 
 	@Bean
-	RestClient geocodingRestClient(TollProperties props) {
-		return RestClient.builder()
-				.baseUrl(props.geocoding().baseUrl())
-				.defaultHeader(HttpHeaders.USER_AGENT, props.geocoding().userAgent())
+	GeocodingClient geocodingClient(TollProperties props, ResourceLoader resources) {
+		TollProperties.Geocoding geocoding = props.geocoding();
+		RestClient nominatim = RestClient.builder()
+				.baseUrl(geocoding.baseUrl())
+				.defaultHeader(HttpHeaders.USER_AGENT, geocoding.userAgent())
 				.requestFactory(requestFactory(props))
 				.build();
+		return new PincodeDirectoryGeocodingClient(
+				PincodeDirectoryGeocodingClient.readDirectory(resources.getResource(geocoding.pincodeDirectory())),
+				new NominatimGeocodingClient(nominatim));
 	}
 
 	@Bean
